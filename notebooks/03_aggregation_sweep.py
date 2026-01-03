@@ -6,54 +6,45 @@ import matplotlib.pyplot as plt
 import numpy as np
 import os
 
+# Force matplotlib to render in notebooks / SSH
+%matplotlib inline
+
 # -----------------------------
 # Setup
 # -----------------------------
-
-# Make sure figures directory exists
 if not os.path.exists('../figures'):
     os.makedirs('../figures')
 
-start_scope()
-
-# Aggregation levels to test
 aggregation_values = [0.0, 0.25, 0.5, 0.75, 1.0]
-
-# Store synaptic transmission strength
 transmission_strength = []
 
 # -----------------------------
-# Sweep over aggregation levels
+# Sweep aggregation levels
 # -----------------------------
 for A in aggregation_values:
 
-    # ---- Biological mapping ----
-    # Alpha-syn aggregation reduces release probability
-    Pr_effect = 0.6 * (1 - A)
+    # IMPORTANT: reset Brian2 each run
+    start_scope()
 
-    # Alpha-syn aggregation slows vesicle recovery
+    # ---- Biological mapping ----
+    Pr_effect = 0.6 * (1 - A)
     tau_rec_effect = 800*ms * (1 + A)
 
     # ---- Presynaptic neuron ----
-    # Two spikes close together to test short-term depression
     source = SpikeGeneratorGroup(
         1,
         indices=[0, 0],
-        times=[10, 20]*ms
+        times=[10, 20] * ms
     )
 
     # ---- Postsynaptic neuron ----
-    # Simple leaky neuron (no spiking needed here)
     post = NeuronGroup(
         1,
-        '''
-        dv/dt = -v/(10*ms) : 1
-        ''',
+        'dv/dt = -v/(10*ms) : 1',
         method='exact'
     )
 
     # ---- Synapse with short-term depression ----
-    # x = fraction of available vesicles
     S = Synapses(
         source,
         post,
@@ -67,27 +58,31 @@ for A in aggregation_values:
     )
 
     S.connect()
-    S.x = 1.0  # start with full vesicle pool (healthy synapse)
+    S.x = 1.0
 
-    # ---- Record postsynaptic voltage ----
+    # ---- Record voltage ----
     M = StateMonitor(post, 'v', record=True)
 
-    # ---- Run simulation ----
+    # ---- Run ----
     run(50*ms)
 
-    # ---- Measure transmission strength ----
-    # Peak voltage response reflects synaptic efficacy
+    # ---- Measure peak response ----
     peak_response = np.max(M.v[0])
     transmission_strength.append(peak_response)
 
-# -----------------------------
-# Normalize to healthy synapse
-# -----------------------------
-transmission_strength = np.array(transmission_strength)
-transmission_strength /= transmission_strength[0]
+    print(f"Aggregation {A:.2f} → Peak response {peak_response:.3f}")
 
 # -----------------------------
-# Plot results
+# Normalize
+# -----------------------------
+transmission_strength = np.array(transmission_strength)
+
+# Avoid divide-by-zero just in case
+if transmission_strength[0] > 0:
+    transmission_strength /= transmission_strength[0]
+
+# -----------------------------
+# Plot
 # -----------------------------
 plt.figure(figsize=(6, 4))
 plt.plot(
@@ -102,6 +97,5 @@ plt.ylabel('Relative Synaptic Transmission')
 plt.title('Effect of α-Synuclein Aggregation on Synaptic Function')
 plt.grid(True)
 plt.tight_layout()
-
 plt.savefig('../figures/03_aggregation_sweep.png')
 plt.show()
